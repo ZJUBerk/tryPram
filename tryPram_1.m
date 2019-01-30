@@ -75,15 +75,14 @@ function tryPram1()
         vrep.simxGetObjectPosition(clientID,obstacle_1,-1,vrep.simx_opmode_streaming);
         vrep.simxGetObjectVelocity(clientID,tar,vrep.simx_opmode_streaming);
         vrep.simxGetObjectVelocity(clientID,tip,vrep.simx_opmode_streaming);
-       
+        for i = 1:proxNum
+            vrep.simxReadProximitySensor(clientID,proxSensor(i),vrep.simx_opmode_streaming);
+        end
+        
         vrep.simxSynchronousTrigger(clientID);
         [res,obstacle_1] = vrep.simxGetObjectPosition(clientID,obstacle_1,-1,vrep.simx_opmode_buffer);
         figure(1)
         plot(obstacle_1(1),obstacle_1(2),'o','color','g'); hold on
-        
-        for i = 1:proxNum
-            vrep.simxReadProximitySensor(clientID,proxSensor(i),vrep.simx_opmode_streaming);
-        end
         
         vrep.simxSynchronousTrigger(clientID);
         while toc < 100
@@ -129,8 +128,10 @@ function tryPram1()
                              leftVel =-unitVel;
                              rightVel = unitVel;
                          elseif (proxState(3)||proxState(5)) && (proxState(4)||proxState(6))
+                             leftVel = 0;
+                             rightVel = 0;
                              disp('can not move,wall');
-                             break;  
+%                              break;  
                          else
                              if theta > 0
                                  leftVel =-unitVel;
@@ -151,29 +152,30 @@ function tryPram1()
                              leftVel = unitVel;
                              rightVel = -unitVel;
                              if proxState(7) && ~proxState(8)
-                                 disp('can not move,r h');
-                                 break;
+                                 disp('can not move');
+                                 leftVel = 0;
+                                 rightVel = 0;
                              end
                          elseif proxState(4)||proxState(6)
                              leftVel =-unitVel;
                              rightVel = unitVel;
                              if ~proxState(7) && proxState(8)
-                                 disp('can not move,l h');
-                                 break;
+                                 disp('can not move');
+                                 leftVel = 0;
+                                 rightVel = 0;
                              end
                          end
                      end
                      if ~proxState(7) && proxState(8)
                          leftVel = 0.5*unitVel;
                          rightVel = -unitVel;
-                         disp('g');
                      elseif proxState(7) && ~proxState(8)
                          leftVel = -unitVel;
                          rightVel = 0.5*unitVel;
-                         disp('f');
                      elseif ~proxState(7) && ~proxState(8)
-                         disp('can not move, h');
-                         break;
+                         disp('can not move');
+                         leftVel = 0;
+                         rightVel = 0;
                      end
                      %%
                      [leftVel,rightVel] = velLimit(leftVel,rightVel,maxVel);
@@ -256,7 +258,8 @@ end
 
 function [leftVel,rightVel] = velLimit(tempLeftVel,tempRightVel,maxVel)
     if tempLeftVel == 0 && tempRightVel == 0
-        leftVel = 0 && rightVel == 0;
+        leftVel = 0;
+        rightVel = 0;
     else
         vel1 = max(tempLeftVel,tempRightVel);
         vel2 = min(tempLeftVel,tempRightVel);
