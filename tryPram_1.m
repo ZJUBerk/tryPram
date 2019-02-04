@@ -18,15 +18,15 @@ function tryPram_1()
         vrep.simxStartSimulation(clientID,vrep.simx_opmode_blocking);
        
         P1 = 5;
-        I1 = 1;
-        D1 = 0.5;
-        P2 = 10;
+        I1 = 0.5;
+        D1 = 0;
+        P2 = 8;
         I2 = 0;
         D2 = 0;
         
         count = 0;
         state = 0;
-        turnFlag = 0;
+        turnFlag = zeros(2,1);
         dt = 0.01;  %time step = 10ms
         simTime = 0;
         diamWheel = 0.1;
@@ -34,6 +34,7 @@ function tryPram_1()
         maxVel = 2*unitVel;
         maxAcc = 10*unitVel*dt;
         keepDist = 1;
+        avoidDist = 2;
         pastLeftVel = 0;
         pastRightVel = 0;
         leftVel = 0;
@@ -57,7 +58,8 @@ function tryPram_1()
         proxState = zeros(proxNum,1);
 %         obstacleNum = 5;
 %         obstaclePos = zeros(obstacleNum,3);
-
+        leftBraitWeight = 1*[0.5, -0.2, 0.35, -0.1, 0.3, -0.05, 0.5, -0.7];
+        rightBraitWeight = 1*[-0.2, 0.5, -0.1, 0.35, -0.05, 0.3, -0.7, 0.5];
        
 
         [res,leftMotor] = vrep.simxGetObjectHandle(clientID,'leftMotor',vrep.simx_opmode_blocking);       
@@ -102,139 +104,148 @@ function tryPram_1()
 %         end
         
         vrep.simxSynchronousTrigger(clientID);
-        while toc < 200
-             simTime = simTime + dt;
-             pastDist = dist; 
-             pastTheta = theta;
-             
-             [res,pos] = vrep.simxGetObjectPosition(clientID,tar,tip,vrep.simx_opmode_buffer);
-             [res,absTarPos] = vrep.simxGetObjectPosition(clientID,tar,-1,vrep.simx_opmode_buffer);
-             [res,absTipPos] = vrep.simxGetObjectPosition(clientID,tip,-1,vrep.simx_opmode_buffer);
-%              [res,tarLineVel,tarAngVel] = vrep.simxGetObjectVelocity(clientID,tar,vrep.simx_opmode_buffer);
-%              [res,tipLineVel,tipAngVel] = vrep.simxGetObjectVelocity(clientID,tip,vrep.simx_opmode_buffer);
-%              figure(1)
-%              plot(simTime,(tipLineVel(1)^2+tipLineVel(2)^2)^0.5,'x');hold on
-%              plot(absTarPos(1),absTarPos(2),'x','color','r'); hold on
-%              plot(absTipPos(1),absTipPos(2),'o','color','b');
-%              posIntegral = integrator(posIntegral,pos,maxVel);
-%              posDiff = derivator(pastPos,pos,dt,maxVel);
-             dist = sqrt(pos(1)^2 + pos(2)^2);
-             distIntegral = integrator(distIntegral,dist-keepDist,maxVel);
-             distDiff = derivator(pastDist,dist,dt,maxVel);
-             theta = atan2(pos(2),pos(1));
-             thetaIntegral = integrator(thetaIntegral,theta,maxVel);
-             thetaDiff = derivator(pastTheta,theta,dt,maxVel);
-             
-             for i = 1:proxNum
-                 [res,proxState(i)] = vrep.simxReadProximitySensor(clientID,proxSensor(i),vrep.simx_opmode_buffer);
-             end
-             
-             vrep.simxSetObjectPosition(clientID,tar,-1,[3*cos(0.2*simTime);4*sin(0.1*simTime+1);0.2],vrep.simx_opmode_oneshot);
-             
-             switch state
-                 case 0
-                     leftVel =P1*(dist - keepDist) + I1*distIntegral + D1*distDiff  - P2*theta - I2*thetaIntegral - D2*thetaDiff;
-                     rightVel = P1*(dist - keepDist) + I1*distIntegral + D1*distDiff + P2*theta + I2*thetaIntegral - D2*thetaDiff;
-                     
-                     %%
-                     % simple obstacle avoidance
-                     if proxState(1) && proxState(2)
-                         if (proxState(3)||proxState(5)) && (~(proxState(4)||proxState(6)))
-                             leftVel = pastLeftVel + maxAcc;
-                             rightVel = pastRightVel - maxAcc;
-                         elseif (proxState(4)||proxState(6)) && (~(proxState(3)||proxState(5)))
-                             leftVel = pastLeftVel - maxAcc;
-                             rightVel = pastRightVel + maxAcc;
-                         elseif (proxState(3)||proxState(5)) && (proxState(4)||proxState(6))
-                             leftVel = 0;
-                             rightVel = 0;
-                             disp('can not move,wall');
-%                              break;  
-                         else
-                             if theta > 0
-                                 leftVel = pastLeftVel - maxAcc;
-                                 rightVel = pastRightVel + maxAcc;
-                             else
-                                 leftVel = pastLeftVel + maxAcc;
-                                 rightVel = pastRightVel - maxAcc;
-                             end
-                         end
-                     elseif proxState(1) && ~proxState(2)
-                         leftVel = pastLeftVel + maxAcc;
-                         rightVel = pastRightVel - maxAcc;
-                     elseif ~proxState(1) && proxState(2)
-                         leftVel = pastLeftVel - maxAcc;
-                         rightVel = pastRightVel + maxAcc;
-                     else
-                         if proxState(3)||proxState(5)
-                             leftVel = pastLeftVel + maxAcc;
-                             rightVel = pastRightVel - maxAcc;
-                             if proxState(7) && ~proxState(8)
-                                 disp('can not move');
-                                 leftVel = 0;
-                                 rightVel = 0;
-                             end
-                         elseif proxState(4)||proxState(6)
-                             leftVel = pastLeftVel - maxAcc;
-                             rightVel = pastRightVel + maxAcc;
-                             if ~proxState(7) && proxState(8)
-                                 disp('can not move');
-                                 leftVel = 0;
-                                 rightVel = 0;
-                             end
-                         end
-                     end
-                     if ~proxState(7) && proxState(8)
-                         leftVel = pastLeftVel + maxAcc;
-                         rightVel = pastRightVel - maxAcc;
-                     elseif proxState(7) && ~proxState(8)
-                         leftVel = pastLeftVel - maxAcc;
-                         rightVel = pastRightVel + maxAcc;
-                     elseif ~proxState(7) && ~proxState(8)
-                         disp('can not move');
-                         leftVel = 0;
-                         rightVel = 0;
-                     end
-                     %%
-                     if abs(dist - keepDist) < 0.1 && abs(theta) >= 0.05
-                         state = 1;
-                         distIntegral = 0;
-                     elseif abs(dist - keepDist) < 0.1 && abs(theta) < 0.05
-                         state = 2;
-                         distIntegral = 0;
-                         thetaIntegral = 0;
-                     end
-                     
-                 case 1
-                     leftVel = -P2*theta - I2*thetaIntegral - D2*thetaDiff;
-                     rightVel = P2*theta + I2*thetaIntegral - D2*thetaDiff;
-                     distIntegral = 0;
-                     if abs(dist - keepDist) >= 0.1
-                         state = 0;
-                     elseif abs(dist - keepDist) < 0.1 && abs(theta) < 0.05
-                         state = 2;
-                         thetaIntegral = 0;
-                     end
-                     
-                 case 2
-                     leftVel = 0;
-                     rightVel =  0;
-                     distIntegral = 0;
-                     thetaIntegral = 0;
-                     if abs(dist - keepDist) >= 0.1 || abs(theta) >= 0.05
-                         state = 0;
-                     end
-%                      break
-             end
-             [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,leftVel,rightVel,maxVel,maxAcc);
-             vrep.simxSetJointTargetVelocity(clientID,leftMotor,leftVel,vrep.simx_opmode_oneshot);
-             vrep.simxSetJointTargetVelocity(clientID,rightMotor,rightVel,vrep.simx_opmode_oneshot);
-%              vrep.simxSetJointTargetVelocity(clientID,leftMotor,-unitVel,vrep.simx_opmode_oneshot);
-%              vrep.simxSetJointTargetVelocity(clientID,rightMotor,-unitVel,vrep.simx_opmode_oneshot);
-             pastLeftVel = leftVel;
-             pastRightVel = rightVel;
-             count=count+1;
-             vrep.simxSynchronousTrigger(clientID);
+        while toc < 2000
+            simTime = simTime + dt
+            pastDist = dist; 
+            pastTheta = theta;
+            [res,pos] = vrep.simxGetObjectPosition(clientID,tar,tip,vrep.simx_opmode_buffer);
+%             [res,absTarPos] = vrep.simxGetObjectPosition(clientID,tar,-1,vrep.simx_opmode_buffer);
+%             [res,absTipPos] = vrep.simxGetObjectPosition(clientID,tip,-1,vrep.simx_opmode_buffer);
+            %              [res,tarLineVel,tarAngVel] = vrep.simxGetObjectVelocity(clientID,tar,vrep.simx_opmode_buffer);
+            %              [res,tipLineVel,tipAngVel] = vrep.simxGetObjectVelocity(clientID,tip,vrep.simx_opmode_buffer);
+            %              figure(1)
+            %              plot(simTime,(tipLineVel(1)^2+tipLineVel(2)^2)^0.5,'x');hold on
+            %              plot(absTarPos(1),absTarPos(2),'x','color','r'); hold on
+            %              plot(absTipPos(1),absTipPos(2),'o','color','b');
+            %              posIntegral = integrator(posIntegral,pos,maxVel);
+            %              posDiff = derivator(pastPos,pos,dt,maxVel);
+            dist = sqrt(pos(1)^2 + pos(2)^2);
+            distIntegral = integrator(distIntegral,dist-keepDist,maxVel);
+            distDiff = derivator(pastDist,dist,dt,maxVel);
+            theta = atan2(pos(2),pos(1));
+            thetaIntegral = integrator(thetaIntegral,theta,maxVel);
+            thetaDiff = derivator(pastTheta,theta,dt,maxVel);
+
+            for i = 1:proxNum
+                [res,proxState(i)] = vrep.simxReadProximitySensor(clientID,proxSensor(i),vrep.simx_opmode_buffer);   
+            end
+            if proxState(7) ~= 0
+                proxState(7) = 0;
+            else
+                proxState(7) = 1;
+            end
+            if proxState(8) ~= 0
+                proxState(8) = 0;
+            else
+                proxState(8) = 1;
+            end
+
+            vrep.simxSetObjectPosition(clientID,tar,-1,[3*cos(0.2*simTime);4*sin(0.1*simTime+1);0.2],vrep.simx_opmode_oneshot);
+
+            switch state
+                case 0
+
+                    if proxState == [0;0;0;0;0;0;0;0]
+                        leftVel =P1*(dist - keepDist) + I1*distIntegral + D1*distDiff  - P2*theta - I2*thetaIntegral - D2*thetaDiff;
+                        rightVel = P1*(dist - keepDist) + I1*distIntegral + D1*distDiff + P2*theta + I2*thetaIntegral - D2*thetaDiff;
+                        [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,leftVel,rightVel,maxVel,maxAcc);
+                    elseif proxState == [1;1;0;0;0;0;0;0]
+                        disp('hesitate!');
+                        if theta > 0 
+                            turnFlag(2) = 1;
+                            leftVel = -unitVel;
+                            rightVel = 0.1 * unitVel;
+                        else
+                            turnFlag(2) = -1;
+                            leftVel = 0.1 * unitVel;
+                            rightVel = -unitVel;
+                        end
+                        [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,leftVel,rightVel,0.5*maxVel,maxAcc);
+                        distIntegral = 0;
+                        thetaIntegral = 0;
+                        state = 3;
+                    else
+                        for i = 1:8
+                            if proxState(i) == 0
+                                proxState(i) = avoidDist;
+                            end
+                        end
+                        leftVel = pastLeftVel + maxAcc*leftBraitWeight*(1-(proxState/avoidDist));
+                        rightVel = pastRightVel + maxAcc*rightBraitWeight*(1-(proxState/avoidDist));
+                        [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,leftVel,rightVel,0.5*maxVel,maxAcc);
+                        distIntegral = 0;
+                        thetaIntegral = 0;
+                    end
+                    if abs(dist - keepDist) < 0.1
+                        state = 1;
+                        distIntegral = 0;
+                    end
+                 
+                case 1
+                    if proxState == [0;0;0;0;0;0;0;0]
+                        leftVel = -P2*theta - I2*thetaIntegral - D2*thetaDiff;
+                        rightVel = P2*theta + I2*thetaIntegral - D2*thetaDiff;
+                    else
+                        leftVel = 0;
+                        rightVel = 0;
+%                         for i = 1:8
+%                             if proxState(i) == 0
+%                                 proxState(i) = avoidDist;
+%                             end
+%                         end
+%                         leftVel = leftVel + maxAcc*leftBraitWeight*(1-(proxState/avoidDist));
+%                         rightVel = rightVel + maxAcc*rightBraitWeight*(1-(proxState/avoidDist));
+                    end
+                    [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,leftVel,rightVel,0.5*maxVel,maxAcc);
+                    distIntegral = 0;
+                    if abs(dist - keepDist) >= 0.1
+                        state = 0;
+                    elseif abs(dist - keepDist) < 0.1 && abs(theta) < 0.05
+                        state = 2;
+                        thetaIntegral = 0;
+                    end
+                 
+                case 2
+                    leftVel = 0;
+                    rightVel =  0;
+                    distIntegral = 0;
+                    thetaIntegral = 0;
+                    if abs(dist - keepDist) >= 0.1 || abs(theta) >= 0.05
+                        state = 0;
+                    end
+                    [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,leftVel,rightVel,0.5*maxVel,maxAcc);
+                case 3
+                    if turnFlag(2) > 0
+                        leftVel = -0.6*unitVel;
+                        rightVel = 0.1*unitVel;
+                    else
+                        leftVel = 0.1*unitVel;
+                        rightVel = -0.6*unitVel;
+                    end
+                    [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,leftVel,rightVel,0.5*maxVel,maxAcc);
+                    disp('still hesitate!');
+                    turnFlag(1) = turnFlag(1) +1;
+                    distIntegral = 0;
+                    thetaIntegral = 0;
+                    if proxState(1:2) ~= [1;1]
+                        turnFlag(1) = turnFlag(1)+20;
+                    end
+                    if turnFlag(1) > 50
+                        turnFlag(1) = 0;
+                        state = 0;
+                    end
+                    
+            %                      break
+            end
+            vrep.simxSetJointTargetVelocity(clientID,leftMotor,leftVel,vrep.simx_opmode_oneshot);
+            vrep.simxSetJointTargetVelocity(clientID,rightMotor,rightVel,vrep.simx_opmode_oneshot);
+            %              vrep.simxSetJointTargetVelocity(clientID,leftMotor,-unitVel,vrep.simx_opmode_oneshot);
+            %              vrep.simxSetJointTargetVelocity(clientID,rightMotor,-unitVel,vrep.simx_opmode_oneshot);
+            pastLeftVel = leftVel;
+            pastRightVel = rightVel;
+            count=count+1;
+%             pause(0.01);
+            vrep.simxSynchronousTrigger(clientID);
                  
              
         end
@@ -313,17 +324,17 @@ function [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,tempLeftVel,temp
     end
     if leftVel-pastLeftVel > maxAcc
         leftVel = pastLeftVel + maxAcc;
-        disp('lal');
+%         disp('lal');
     elseif leftVel-pastLeftVel < -maxAcc
         leftVel = pastLeftVel - maxAcc;
-        disp('lal');
+%         disp('lal');
     end
     if rightVel-pastRightVel > maxAcc
         rightVel = pastRightVel + maxAcc;
-        disp('ral');
+%         disp('ral');
     elseif rightVel-pastRightVel < -maxAcc
         rightVel = pastRightVel - maxAcc;
-        disp('ral');
+%         disp('ral');
     end
 end
         
