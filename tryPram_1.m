@@ -20,7 +20,7 @@ function tryPram_1()
         P1 = 5;
         I1 = 0.5;
         D1 = 0;
-        P2 = 8;
+        P2 = 7;
         I2 = 0;
         D2 = 0;
         
@@ -34,7 +34,7 @@ function tryPram_1()
         maxVel = 2*unitVel;
         maxAcc = 10*unitVel*dt;
         keepDist = 1;
-        avoidDist = 2;
+        avoidDist = 0.5;
         pastLeftVel = 0;
         pastRightVel = 0;
         leftVel = 0;
@@ -56,10 +56,14 @@ function tryPram_1()
         thetaDiff = 0;
         proxNum = 8;
         proxState = zeros(proxNum,1);
+        proxCoord = zeros(proxNum,3);
+        proxDist = zeros(proxNum,1);
+        pastProxDist = zeros(proxNum,1);
+        pastIndex = ones(proxNum,1);
 %         obstacleNum = 5;
 %         obstaclePos = zeros(obstacleNum,3);
-        leftBraitWeight = 1*[0.5, -0.2, 0.35, -0.1, 0.3, -0.05, 0.5, -0.7];
-        rightBraitWeight = 1*[-0.2, 0.5, -0.1, 0.35, -0.05, 0.3, -0.7, 0.5];
+        leftBraitWeight = 1*[0.45, -0.2, 0.4, -0.15, 0.3, -0.05, 0.3, -0.4];
+        rightBraitWeight = 1*[-0.2, 0.45, -0.15, 0.4, -0.05, 0.3, -0.4, 0.3];
        
 
         [res,leftMotor] = vrep.simxGetObjectHandle(clientID,'leftMotor',vrep.simx_opmode_blocking);       
@@ -105,7 +109,7 @@ function tryPram_1()
         
         vrep.simxSynchronousTrigger(clientID);
         while toc < 2000
-            simTime = simTime + dt
+            simTime = simTime + dt;
             pastDist = dist; 
             pastTheta = theta;
             [res,pos] = vrep.simxGetObjectPosition(clientID,tar,tip,vrep.simx_opmode_buffer);
@@ -127,8 +131,9 @@ function tryPram_1()
             thetaDiff = derivator(pastTheta,theta,dt,maxVel);
 
             for i = 1:proxNum
-                [res,proxState(i)] = vrep.simxReadProximitySensor(clientID,proxSensor(i),vrep.simx_opmode_buffer);   
+                [res,proxState(i),proxCoord(i,:)] = vrep.simxReadProximitySensor(clientID,proxSensor(i),vrep.simx_opmode_buffer);   
             end
+            
             if proxState(7) ~= 0
                 proxState(7) = 0;
             else
@@ -153,30 +158,61 @@ function tryPram_1()
                         disp('hesitate!');
                         if theta > 0 
                             turnFlag(2) = 1;
-                            leftVel = -unitVel;
+                            leftVel = -0.3*unitVel;
                             rightVel = 0.1 * unitVel;
                         else
                             turnFlag(2) = -1;
                             leftVel = 0.1 * unitVel;
-                            rightVel = -unitVel;
+                            rightVel = -0.3*unitVel;
                         end
                         [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,leftVel,rightVel,0.5*maxVel,maxAcc);
                         distIntegral = 0;
                         thetaIntegral = 0;
                         state = 3;
                     else
-                        for i = 1:8
+                        for i = 1:2
                             if proxState(i) == 0
-                                proxState(i) = avoidDist;
+                                proxDist(i) = avoidDist;
+                            else
+                                proxDist(i) = 0.5*proxCoord(i,3);
+                            end
+                            if proxDist(i) > pastProxDist(i)
+                                pastIndex = 2;
+                            else
+                                pastIndex = 1;
                             end
                         end
-                        leftVel = pastLeftVel + maxAcc*leftBraitWeight*(1-(proxState/avoidDist));
-                        rightVel = pastRightVel + maxAcc*rightBraitWeight*(1-(proxState/avoidDist));
-                        [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,leftVel,rightVel,0.5*maxVel,maxAcc);
+                        for i = 3:6
+                            if proxState(i) == 0
+                                proxDist(i) = avoidDist;
+                            else
+                                proxDist(i) = 1*proxCoord(i,3);
+                            end
+                            if proxDist(i) > pastProxDist(i)
+                                pastIndex = 2;
+                            else
+                                pastIndex = 1;
+                            end
+                        end
+                        for i = 7:8
+                            if proxState(i) == 0
+                                proxDist(i) = avoidDist;
+                            else
+                                proxDist(i) = 0;
+                            end
+                        end
+                        pastProxDist = proxDist;
+                        leftVel = pastLeftVel + maxAcc*leftBraitWeight*((1-(proxDist/avoidDist)).^pastIndex);
+                        rightVel = pastRightVel + maxAcc*rightBraitWeight*((1-(proxDist/avoidDist)).^pastIndex);
+                        if proxState(7) == 1 || proxState(8) == 1
+                            [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,leftVel,rightVel,0.25*maxVel,maxAcc);
+                        else
+                            [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,leftVel,rightVel,0.5*maxVel,maxAcc);
+                        end
                         distIntegral = 0;
                         thetaIntegral = 0;
                     end
-                    if abs(dist - keepDist) < 0.1
+                    if abs(dist - keepDist) < 0.15
                         state = 1;
                         distIntegral = 0;
                     end
@@ -188,13 +224,7 @@ function tryPram_1()
                     else
                         leftVel = 0;
                         rightVel = 0;
-%                         for i = 1:8
-%                             if proxState(i) == 0
-%                                 proxState(i) = avoidDist;
-%                             end
-%                         end
-%                         leftVel = leftVel + maxAcc*leftBraitWeight*(1-(proxState/avoidDist));
-%                         rightVel = rightVel + maxAcc*rightBraitWeight*(1-(proxState/avoidDist));
+
                     end
                     [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,leftVel,rightVel,0.5*maxVel,maxAcc);
                     distIntegral = 0;
@@ -216,11 +246,11 @@ function tryPram_1()
                     [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,leftVel,rightVel,0.5*maxVel,maxAcc);
                 case 3
                     if turnFlag(2) > 0
-                        leftVel = -0.6*unitVel;
-                        rightVel = 0.1*unitVel;
+                        leftVel = -0.25*unitVel;
+                        rightVel = 0.2*unitVel;
                     else
-                        leftVel = 0.1*unitVel;
-                        rightVel = -0.6*unitVel;
+                        leftVel = 0.2*unitVel;
+                        rightVel = -0.25*unitVel;
                     end
                     [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,leftVel,rightVel,0.5*maxVel,maxAcc);
                     disp('still hesitate!');
@@ -228,7 +258,7 @@ function tryPram_1()
                     distIntegral = 0;
                     thetaIntegral = 0;
                     if proxState(1:2) ~= [1;1]
-                        turnFlag(1) = turnFlag(1)+20;
+                        turnFlag(1) = turnFlag(1)+15;
                     end
                     if turnFlag(1) > 50
                         turnFlag(1) = 0;
@@ -239,8 +269,7 @@ function tryPram_1()
             end
             vrep.simxSetJointTargetVelocity(clientID,leftMotor,leftVel,vrep.simx_opmode_oneshot);
             vrep.simxSetJointTargetVelocity(clientID,rightMotor,rightVel,vrep.simx_opmode_oneshot);
-            %              vrep.simxSetJointTargetVelocity(clientID,leftMotor,-unitVel,vrep.simx_opmode_oneshot);
-            %              vrep.simxSetJointTargetVelocity(clientID,rightMotor,-unitVel,vrep.simx_opmode_oneshot);
+
             pastLeftVel = leftVel;
             pastRightVel = rightVel;
             count=count+1;
