@@ -18,11 +18,11 @@ function tryPram_1()
         vrep.simxStartSimulation(clientID,vrep.simx_opmode_blocking);
        
         P1 = 5;
-        I1 = 0.5;
+        I1 = 0.2;
         D1 = 0;
         P2 = 7;
         I2 = 0;
-        D2 = 0;
+        D2 = 0.2;
         
         count = 0;
         state = 0;
@@ -33,7 +33,7 @@ function tryPram_1()
         unitVel = 2/diamWheel;  %1/(pi*diamWheel)*(2*pi)
         maxVel = 2*unitVel;
         maxAcc = 10*unitVel*dt;
-        keepDist = 1;
+        keepDist = 1.5;
         avoidDist = 0.5;
         pastLeftVel = 0;
         pastRightVel = 0;
@@ -41,8 +41,8 @@ function tryPram_1()
         rightVel = 0;
 %         tarLineVel = zeros(3,1);
 %         tarAngVel = zeros(3,1);
-%         tipLineVel = zeros(3,1);
-%         tipAngVel = zeros(3,1);        
+        tipLineVel = zeros(3,1);
+        tipAngVel = zeros(3,1);        
         pos = zeros(3,1);
 %         posIntegral = zeros(3,1);
 %         posDiff = zeros(3,1);
@@ -60,8 +60,9 @@ function tryPram_1()
         proxDist = zeros(proxNum,1);
         pastProxDist = zeros(proxNum,1);
         pastIndex = ones(proxNum,1);
-%         obstacleNum = 5;
-%         obstaclePos = zeros(obstacleNum,3);
+        tempWalkVel = zeros(100,1);
+        pastWalkVel = 0;
+        walkVel = 0;
         leftBraitWeight = 1*[0.45, -0.2, 0.4, -0.15, 0.3, -0.05, 0.3, -0.4];
         rightBraitWeight = 1*[-0.2, 0.45, -0.15, 0.4, -0.05, 0.3, -0.4, 0.3];
        
@@ -70,11 +71,6 @@ function tryPram_1()
         [res,rightMotor] = vrep.simxGetObjectHandle(clientID,'rightMotor',vrep.simx_opmode_blocking);  
         [res,tip] = vrep.simxGetObjectHandle(clientID,'tip',vrep.simx_opmode_blocking);
         [res,tar] = vrep.simxGetObjectHandle(clientID,'tar',vrep.simx_opmode_blocking);
-%         [res,obstacle(1)] = vrep.simxGetObjectHandle(clientID,'cuboid_1',vrep.simx_opmode_blocking);
-%         [res,obstacle(2)] = vrep.simxGetObjectHandle(clientID,'cuboid_2',vrep.simx_opmode_blocking);
-%         [res,obstacle(3)] = vrep.simxGetObjectHandle(clientID,'cuboid_3',vrep.simx_opmode_blocking);
-%         [res,obstacle(4)] = vrep.simxGetObjectHandle(clientID,'cuboid_4',vrep.simx_opmode_blocking);
-%         [res,obstacle(5)] = vrep.simxGetObjectHandle(clientID,'cuboid_5',vrep.simx_opmode_blocking);
         [res,proxSensor(1)] = vrep.simxGetObjectHandle(clientID,'sensor_f_l',vrep.simx_opmode_blocking);
         [res,proxSensor(2)] = vrep.simxGetObjectHandle(clientID,'sensor_f_r',vrep.simx_opmode_blocking);  
         [res,proxSensor(3)] = vrep.simxGetObjectHandle(clientID,'sensor_l_f',vrep.simx_opmode_blocking);
@@ -89,23 +85,13 @@ function tryPram_1()
         vrep.simxGetObjectPosition(clientID,tar,tip,vrep.simx_opmode_streaming);
         vrep.simxGetObjectPosition(clientID,tar,-1,vrep.simx_opmode_streaming);
         vrep.simxGetObjectPosition(clientID,tip,-1,vrep.simx_opmode_streaming);
-%         for i = 1:obstacleNum
-%             vrep.simxGetObjectPosition(clientID,obstacle(i),-1,vrep.simx_opmode_streaming);
-%         end
+
         for i = 1:proxNum
             vrep.simxReadProximitySensor(clientID,proxSensor(i),vrep.simx_opmode_streaming);
         end
         vrep.simxGetObjectVelocity(clientID,tar,vrep.simx_opmode_streaming);
         vrep.simxGetObjectVelocity(clientID,tip,vrep.simx_opmode_streaming);
         
-%         vrep.simxSynchronousTrigger(clientID);
-%         for i =1:obstacleNum
-%             [res,obstaclePos(i,:)] = vrep.simxGetObjectPosition(clientID,obstacle(i),-1,vrep.simx_opmode_buffer);
-%         end
-%         figure(1)
-%         for i = 1:obstacleNum
-%             plot(obstaclePos(i,1),obstaclePos(i,2),'s','color','g','Markersize',30); hold on
-%         end
         
         vrep.simxSynchronousTrigger(clientID);
         while toc < 2000
@@ -113,16 +99,10 @@ function tryPram_1()
             pastDist = dist; 
             pastTheta = theta;
             [res,pos] = vrep.simxGetObjectPosition(clientID,tar,tip,vrep.simx_opmode_buffer);
-%             [res,absTarPos] = vrep.simxGetObjectPosition(clientID,tar,-1,vrep.simx_opmode_buffer);
-%             [res,absTipPos] = vrep.simxGetObjectPosition(clientID,tip,-1,vrep.simx_opmode_buffer);
-            %              [res,tarLineVel,tarAngVel] = vrep.simxGetObjectVelocity(clientID,tar,vrep.simx_opmode_buffer);
-            %              [res,tipLineVel,tipAngVel] = vrep.simxGetObjectVelocity(clientID,tip,vrep.simx_opmode_buffer);
-            %              figure(1)
-            %              plot(simTime,(tipLineVel(1)^2+tipLineVel(2)^2)^0.5,'x');hold on
-            %              plot(absTarPos(1),absTarPos(2),'x','color','r'); hold on
-            %              plot(absTipPos(1),absTipPos(2),'o','color','b');
-            %              posIntegral = integrator(posIntegral,pos,maxVel);
-            %              posDiff = derivator(pastPos,pos,dt,maxVel);
+
+%             [res,tarLineVel,tarAngVel] = vrep.simxGetObjectVelocity(clientID,tar,vrep.simx_opmode_buffer);
+%             [res,tipLineVel,tipAngVel] = vrep.simxGetObjectVelocity(clientID,tip,vrep.simx_opmode_buffer);
+
             dist = sqrt(pos(1)^2 + pos(2)^2);
             distIntegral = integrator(distIntegral,dist-keepDist,maxVel);
             distDiff = derivator(pastDist,dist,dt,maxVel);
@@ -130,6 +110,8 @@ function tryPram_1()
             thetaIntegral = integrator(thetaIntegral,theta,maxVel);
             thetaDiff = derivator(pastTheta,theta,dt,maxVel);
 
+            [walkVel,tempWalkVel,pastWalkVel] = getWalkVel(tempWalkVel,pastWalkVel,dist,pastDist,dt,(leftVel+rightVel)/2/unitVel);
+            
             for i = 1:proxNum
                 [res,proxState(i),proxCoord(i,:)] = vrep.simxReadProximitySensor(clientID,proxSensor(i),vrep.simx_opmode_buffer);   
             end
@@ -145,14 +127,15 @@ function tryPram_1()
                 proxState(8) = 1;
             end
 
-            vrep.simxSetObjectPosition(clientID,tar,-1,[3*cos(0.2*simTime);4*sin(0.1*simTime+1);0.2],vrep.simx_opmode_oneshot);
+            vrep.simxSetObjectPosition(clientID,tar,-1,[6*cos(0.2*simTime)+0.06*cos(4*pi*simTime);9*sin(0.1*simTime+1)+0.09*sin(4*pi*simTime+1);0.2],vrep.simx_opmode_oneshot);
+%             vrep.simxSetObjectPosition(clientID,tar,-1,[3;10-simTime+0.06*cos(4*pi*simTime);0.2],vrep.simx_opmode_oneshot);
 
             switch state
                 case 0
 
                     if proxState == [0;0;0;0;0;0;0;0]
-                        leftVel =P1*(dist - keepDist) + I1*distIntegral + D1*distDiff  - P2*theta - I2*thetaIntegral - D2*thetaDiff;
-                        rightVel = P1*(dist - keepDist) + I1*distIntegral + D1*distDiff + P2*theta + I2*thetaIntegral - D2*thetaDiff;
+                        leftVel =walkVel*unitVel + P1*(dist - keepDist) + I1*distIntegral + D1*distDiff  - P2*theta - I2*thetaIntegral - D2*thetaDiff;
+                        rightVel = walkVel*unitVel + P1*(dist - keepDist) + I1*distIntegral + D1*distDiff + P2*theta + I2*thetaIntegral - D2*thetaDiff;
                         [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,leftVel,rightVel,maxVel,maxAcc);
                     elseif proxState == [1;1;0;0;0;0;0;0]
                         disp('hesitate!');
@@ -212,7 +195,7 @@ function tryPram_1()
                         distIntegral = 0;
                         thetaIntegral = 0;
                     end
-                    if abs(dist - keepDist) < 0.15
+                    if abs(dist - keepDist) < 0.1 && walkVel == 0
                         state = 1;
                         distIntegral = 0;
                     end
@@ -228,19 +211,19 @@ function tryPram_1()
                     end
                     [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,leftVel,rightVel,0.5*maxVel,maxAcc);
                     distIntegral = 0;
-                    if abs(dist - keepDist) >= 0.1
+                    if abs(dist - keepDist) >= 0.2
                         state = 0;
-                    elseif abs(dist - keepDist) < 0.1 && abs(theta) < 0.05
+                    elseif abs(dist - keepDist) < 0.2 && abs(theta) < 0.05
                         state = 2;
                         thetaIntegral = 0;
                     end
                  
                 case 2
                     leftVel = 0;
-                    rightVel =  0;
+                    rightVel =  0;   
                     distIntegral = 0;
                     thetaIntegral = 0;
-                    if abs(dist - keepDist) >= 0.1 || abs(theta) >= 0.05
+                    if abs(dist - keepDist) >= 0.2 || abs(theta) >= 0.05
                         state = 0;
                     end
                     [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,leftVel,rightVel,0.5*maxVel,maxAcc);
@@ -366,7 +349,23 @@ function [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,tempLeftVel,temp
 %         disp('ral');
     end
 end
-        
+
+function [walkVel,tempWalkVel,pastWalkVel] = getWalkVel(tempWalkVel,pastWalkVel,dist,pastDist,timeStep,pramVel)
+    for i = 1:99
+        tempWalkVel(i) = tempWalkVel(i+1);
+    end
+    tempWalkVel(100) = (dist - pastDist) / timeStep + pramVel;
+    aveWalkVel = sum(tempWalkVel)/100;
+    if (aveWalkVel - pastWalkVel) < 0.02
+        walkVel = aveWalkVel;
+    else
+        walkVel = sum(tempWalkVel(81:100)/20);
+    end
+    if walkVel < 0.1
+        walkVel = 0;
+    end
+    pastWalkVel = walkVel;
+end 
         
         
         
