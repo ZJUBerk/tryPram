@@ -13,16 +13,20 @@ function tryPram_1()
         % start the simulation:
 
         %%
+        %initialization
         tic
         vrep.simxSynchronous(clientID,true);
         vrep.simxStartSimulation(clientID,vrep.simx_opmode_blocking);
        
-        P1 = 5;
-        I1 = 0.2;
-        D1 = 0;
-        P2 = 7;
-        I2 = 0;
-        D2 = 0.2;
+        kP1 = 5;
+        kI1 = 0.2;
+        kD1 = 0;
+        kP2 = 7; %default = 7
+        kI2 = 0;
+        kD2 = 0.2;
+        %Braitenberg weights
+        leftBraitWeight = 1.2*[0.45, -0.2, 0.4, -0.15, 0.3, -0.05, 0.3, -0.4];
+        rightBraitWeight = 1.2*[-0.2, 0.45, -0.15, 0.4, -0.05, 0.3, -0.4, 0.3];
         
         count = 0;
         state = 0;
@@ -31,9 +35,9 @@ function tryPram_1()
         simTime = 0;
         diamWheel = 0.1;
         unitVel = 2/diamWheel;  %1/(pi*diamWheel)*(2*pi)
-        maxVel = 2*unitVel;
+        maxVel = 2*unitVel; %indoor mode maxVel = 1.5m/s; outdoor mode maxVel = 2m/s.
         maxAcc = 10*unitVel*dt;
-        keepDist = 1.5;
+        keepDist = 1.5; 
         avoidDist = 0.5;
         pastLeftVel = 0;
         pastRightVel = 0;
@@ -60,11 +64,29 @@ function tryPram_1()
         proxDist = zeros(proxNum,1);
         pastProxDist = zeros(proxNum,1);
         pastIndex = ones(proxNum,1);
+        
         tempWalkVel = zeros(100,1);
         pastWalkVel = 0;
         walkVel = 0;
-        leftBraitWeight = 1*[0.45, -0.2, 0.4, -0.15, 0.3, -0.05, 0.3, -0.4];
-        rightBraitWeight = 1*[-0.2, 0.45, -0.15, 0.4, -0.05, 0.3, -0.4, 0.3];
+        
+        wallFlag = 0;
+        
+%         Q = [0 0; 0 0.1];
+%         R = 1;
+%         A = [1 dt;0 1];
+%         B = [walkVel;dt];
+%         H = [1,0];
+%         n = size(Q);
+%         m = size(R);
+%         
+%         xhat = [0,0];
+%         xhatminus = [0,0];
+%         P = zeros(n);
+%         Pminus = zeros(n);
+%         K = zeros(n(1),m(1));
+%         I = eye(n);
+        
+
        
 
         [res,leftMotor] = vrep.simxGetObjectHandle(clientID,'leftMotor',vrep.simx_opmode_blocking);       
@@ -94,12 +116,23 @@ function tryPram_1()
         
         
         vrep.simxSynchronousTrigger(clientID);
+        %%
+        %start loop
         while toc < 2000
             simTime = simTime + dt;
             pastDist = dist; 
             pastTheta = theta;
             [res,pos] = vrep.simxGetObjectPosition(clientID,tar,tip,vrep.simx_opmode_buffer);
-
+%             pos = pos +0.1.*rand(1,3)-0.05;   %add sensor noise
+            
+            %call Kalman filter
+%             xhatminus(:,k) = A*xhat(:,k-1)+B*g;
+%             Pminus= A*P*A'+Q;
+%             K = Pminus*H'*inv( H*Pminus*H'+R );
+%             xhat(:,k) = xhatminus(:,k)+K*(z(k)-H*xhatminus(:,k));
+%             P = (I-K*H)*Pminus;
+            
+            
 %             [res,tarLineVel,tarAngVel] = vrep.simxGetObjectVelocity(clientID,tar,vrep.simx_opmode_buffer);
 %             [res,tipLineVel,tipAngVel] = vrep.simxGetObjectVelocity(clientID,tip,vrep.simx_opmode_buffer);
 
@@ -128,25 +161,27 @@ function tryPram_1()
             end
 
             vrep.simxSetObjectPosition(clientID,tar,-1,[6*cos(0.2*simTime)+0.06*cos(4*pi*simTime);9*sin(0.1*simTime+1)+0.09*sin(4*pi*simTime+1);0.2],vrep.simx_opmode_oneshot);
-%             vrep.simxSetObjectPosition(clientID,tar,-1,[3;10-simTime+0.06*cos(4*pi*simTime);0.2],vrep.simx_opmode_oneshot);
+%             vrep.simxSetObjectPosition(clientID,tar,-1,[3;10-simTime+0.02*cos(4*pi*simTime);0.2],vrep.simx_opmode_oneshot);
 
             switch state
                 case 0
 
                     if proxState == [0;0;0;0;0;0;0;0]
-                        leftVel =walkVel*unitVel + P1*(dist - keepDist) + I1*distIntegral + D1*distDiff  - P2*theta - I2*thetaIntegral - D2*thetaDiff;
-                        rightVel = walkVel*unitVel + P1*(dist - keepDist) + I1*distIntegral + D1*distDiff + P2*theta + I2*thetaIntegral - D2*thetaDiff;
+%                         leftVel = walkVel*unitVel + kP1*(dist - keepDist) + kI1*distIntegral + kD1*distDiff  - kP2*theta*(pastLeftVel+pastRightVel)^2/dist - kI2*thetaIntegral - kD2*thetaDiff;
+%                         rightVel = walkVel*unitVel + kP1*(dist - keepDist) + kI1*distIntegral + kD1*distDiff + kP2*theta*(pastLeftVel+pastRightVel)^2/dist + kI2*thetaIntegral - kD2*thetaDiff;
+                        leftVel = walkVel*unitVel + kP1*(dist - keepDist) + kI1*distIntegral + kD1*distDiff  - kP2*theta - kI2*thetaIntegral - kD2*thetaDiff;
+                        rightVel = walkVel*unitVel + kP1*(dist - keepDist) + kI1*distIntegral + kD1*distDiff + kP2*theta + kI2*thetaIntegral - kD2*thetaDiff;
                         [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,leftVel,rightVel,maxVel,maxAcc);
-                    elseif proxState == [1;1;0;0;0;0;0;0]
+                    elseif proxState(1) == 1 && proxState(2) == 1
                         disp('hesitate!');
                         if theta > 0 
                             turnFlag(2) = 1;
-                            leftVel = -0.3*unitVel;
+                            leftVel = -0.5*unitVel;
                             rightVel = 0.1 * unitVel;
                         else
                             turnFlag(2) = -1;
                             leftVel = 0.1 * unitVel;
-                            rightVel = -0.3*unitVel;
+                            rightVel = -0.5*unitVel;
                         end
                         [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,leftVel,rightVel,0.5*maxVel,maxAcc);
                         distIntegral = 0;
@@ -160,7 +195,7 @@ function tryPram_1()
                                 proxDist(i) = 0.5*proxCoord(i,3);
                             end
                             if proxDist(i) > pastProxDist(i)
-                                pastIndex = 2;
+                                pastIndex = 8;
                             else
                                 pastIndex = 1;
                             end
@@ -172,7 +207,7 @@ function tryPram_1()
                                 proxDist(i) = 1*proxCoord(i,3);
                             end
                             if proxDist(i) > pastProxDist(i)
-                                pastIndex = 2;
+                                pastIndex = 8;
                             else
                                 pastIndex = 1;
                             end
@@ -184,9 +219,20 @@ function tryPram_1()
                                 proxDist(i) = 0;
                             end
                         end
+                        if proxState == [0;0;1;0;0;0;0;0] & theta > 0
+                            wallFlag = wallFlag + 1;
+                        elseif proxState == [0;0;0;1;0;0;0;0] & theta < 0
+                            wallFlag = wallFlag - 1;
+                        end
+                        if abs(wallFlag)>10
+                            state = 4;
+                        end
+                        
                         pastProxDist = proxDist;
-                        leftVel = pastLeftVel + maxAcc*leftBraitWeight*((1-(proxDist/avoidDist)).^pastIndex);
-                        rightVel = pastRightVel + maxAcc*rightBraitWeight*((1-(proxDist/avoidDist)).^pastIndex);
+%                         leftVel = pastLeftVel + maxAcc*leftBraitWeight*((1-(proxDist/avoidDist)).^pastIndex);
+%                         rightVel = pastRightVel + maxAcc*rightBraitWeight*((1-(proxDist/avoidDist)).^pastIndex);
+                        leftVel = walkVel+pastLeftVel + maxAcc*leftBraitWeight*((1-(proxDist/avoidDist)).^pastIndex);
+                        rightVel = walkVel+pastRightVel + maxAcc*rightBraitWeight*((1-(proxDist/avoidDist)).^pastIndex);
                         if proxState(7) == 1 || proxState(8) == 1
                             [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,leftVel,rightVel,0.25*maxVel,maxAcc);
                         else
@@ -202,8 +248,8 @@ function tryPram_1()
                  
                 case 1
                     if proxState == [0;0;0;0;0;0;0;0]
-                        leftVel = -P2*theta - I2*thetaIntegral - D2*thetaDiff;
-                        rightVel = P2*theta + I2*thetaIntegral - D2*thetaDiff;
+                        leftVel = -kP2*theta - kI2*thetaIntegral - kD2*thetaDiff;
+                        rightVel = kP2*theta + kI2*thetaIntegral - kD2*thetaDiff;
                     else
                         leftVel = 0;
                         rightVel = 0;
@@ -229,11 +275,23 @@ function tryPram_1()
                     [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,leftVel,rightVel,0.5*maxVel,maxAcc);
                 case 3
                     if turnFlag(2) > 0
-                        leftVel = -0.25*unitVel;
-                        rightVel = 0.2*unitVel;
+                        if proxState(3) == 1 || proxState(5) == 1
+                            turnFlag(2) = -1;
+                            leftVel = 0.2*unitVel;
+                            rightVel = -0.25*unitVel;
+                        else
+                            leftVel = -0.25*unitVel;
+                            rightVel = 0.2*unitVel;
+                        end
                     else
-                        leftVel = 0.2*unitVel;
-                        rightVel = -0.25*unitVel;
+                        if proxState(4) == 1 || proxState(6) == 1
+                            turnFlag(2) = 1;
+                            leftVel = -0.25*unitVel;
+                            rightVel = 0.2*unitVel;
+                        else
+                            leftVel = 0.2*unitVel;
+                            rightVel = -0.25*unitVel;
+                        end
                     end
                     [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,leftVel,rightVel,0.5*maxVel,maxAcc);
                     disp('still hesitate!');
@@ -241,12 +299,33 @@ function tryPram_1()
                     distIntegral = 0;
                     thetaIntegral = 0;
                     if proxState(1:2) ~= [1;1]
-                        turnFlag(1) = turnFlag(1)+15;
+                        turnFlag(1) = turnFlag(1)+150;
                     end
-                    if turnFlag(1) > 50
+                    if turnFlag(1) > 1000
                         turnFlag(1) = 0;
                         state = 0;
                     end
+                case 4  %wallFollow
+                    if wallFlag > 0
+                        leftVel = walkVel*unitVel + kP1*(dist - keepDist) + kI1*distIntegral + kD1*distDiff - 1*(proxCoord(3,3) - 0.4);
+                        rightVel = walkVel*unitVel + kP1*(dist - keepDist) + kI1*distIntegral + kD1*distDiff + 1*(proxCoord(3,3) - 0.4);
+                        if sum(proxState == [0;0;1;0;0;0;0;0]) ~= 8 || theta < 0
+                            state = 0;
+                            wallFlag = 0;
+                        end
+                    elseif wallFlag < 0
+                        leftVel = walkVel*unitVel + kP1*(dist - keepDist) + kI1*distIntegral + kD1*distDiff + 1*(proxCoord(4,3) - 0.4);
+                        rightVel = walkVel*unitVel + kP1*(dist - keepDist) + kI1*distIntegral + kD1*distDiff - 1*(proxCoord(4,3) - 0.4);
+                        if sum(proxState == [0;0;0;1;0;0;0;0]) ~= 8 || theta > 0
+                            state = 0;
+                            wallFlag = 0;
+                        end
+                    disp('wall follow');
+                    [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,leftVel,rightVel,maxVel,maxAcc);
+                    end
+                    
+                     
+         
                     
             %                      break
             end
@@ -298,6 +377,7 @@ function resultData = derivator(pastData, presentData ,timeStep,bound)
     end
 end
 
+%motor speed limitation
 function [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,tempLeftVel,tempRightVel,maxVel,maxAcc)
 %     if tempLeftVel-pastLeftVel > maxAcc
 %         tempLeftVel = pastLeftVel + maxAcc;
@@ -350,22 +430,26 @@ function [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,tempLeftVel,temp
     end
 end
 
+%%limit-range recursive average filtering to get walk speed
+%First order low pass filtering
 function [walkVel,tempWalkVel,pastWalkVel] = getWalkVel(tempWalkVel,pastWalkVel,dist,pastDist,timeStep,pramVel)
-    for i = 1:99
+    for i = 1:9
         tempWalkVel(i) = tempWalkVel(i+1);
     end
-    tempWalkVel(100) = (dist - pastDist) / timeStep + pramVel;
-    aveWalkVel = sum(tempWalkVel)/100;
-    if (aveWalkVel - pastWalkVel) < 0.02
-        walkVel = aveWalkVel;
-    else
-        walkVel = sum(tempWalkVel(81:100)/20);
-    end
-    if walkVel < 0.1
+    tempWalkVel(10) = (dist - pastDist) / timeStep + pramVel;
+    if abs(tempWalkVel(10)-pastWalkVel) > 10
+        tempWalkVel(10) = tempWalkVel(9);
+    end   
+    aveWalkVel = sum(tempWalkVel)/10;
+    walkVel = 0.99*pastWalkVel + 0.01*aveWalkVel;
+    
+    if walkVel < 0.01
         walkVel = 0;
     end
     pastWalkVel = walkVel;
 end 
         
-        
+function followWall()
+
+end
         
