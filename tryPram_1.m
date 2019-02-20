@@ -43,13 +43,13 @@ function tryPram_1()
         pastRightVel = 0;
         leftVel = 0;
         rightVel = 0;
-%         tarLineVel = zeros(3,1);
-%         tarAngVel = zeros(3,1);
-        tipLineVel = zeros(3,1);
-        tipAngVel = zeros(3,1);        
-        pos = zeros(3,1);
-%         posIntegral = zeros(3,1);
-%         posDiff = zeros(3,1);
+%         tarLineVel = zeros(1,3);
+%         tarAngVel = zeros(1,3);
+        tipLineVel = zeros(1,3);
+        tipAngVel = zeros(1,3);        
+        realPos = zeros(1,3);
+%         posIntegral = zeros(1,3);
+%         posDiff = zeros(1,3);
         pastDist = 0;
         dist = 0;
         distIntegral = 0;
@@ -71,23 +71,20 @@ function tryPram_1()
         
         wallFlag = 0;
         
-%         Q = [0 0; 0 0.1];
-%         R = 1;
-%         A = [1 dt;0 1];
-%         B = [walkVel;dt];
-%         H = [1,0];
-%         n = size(Q);
-%         m = size(R);
-%         
-%         xhat = [0,0];
-%         xhatminus = [0,0];
-%         P = zeros(n);
-%         Pminus = zeros(n);
-%         K = zeros(n(1),m(1));
-%         I = eye(n);
-        
-
-       
+        Q = 0.0001*eye(2);
+        R = 0.001*eye(2);
+        A = eye(2);
+        H = eye(2);
+        n = size(Q);
+        m = size(R);
+        z = zeros(2,1);
+        xhat = zeros(2,1);
+        xhatminus = zeros(2,1);
+        P = [1 0;0 1];
+        Pminus = zeros(n);
+        K = zeros(n(1),m(1));
+        I = eye(n);
+        pos = zeros(2,1);
 
         [res,leftMotor] = vrep.simxGetObjectHandle(clientID,'leftMotor',vrep.simx_opmode_blocking);       
         [res,rightMotor] = vrep.simxGetObjectHandle(clientID,'rightMotor',vrep.simx_opmode_blocking);  
@@ -114,7 +111,6 @@ function tryPram_1()
         vrep.simxGetObjectVelocity(clientID,tar,vrep.simx_opmode_streaming);
         vrep.simxGetObjectVelocity(clientID,tip,vrep.simx_opmode_streaming);
         
-        
         vrep.simxSynchronousTrigger(clientID);
         %%
         %start loop
@@ -122,18 +118,24 @@ function tryPram_1()
             simTime = simTime + dt;
             pastDist = dist; 
             pastTheta = theta;
-            [res,pos] = vrep.simxGetObjectPosition(clientID,tar,tip,vrep.simx_opmode_buffer);
-%             pos = pos +0.1.*rand(1,3)-0.05;   %add sensor noise
-            
+            [res,realPos] = vrep.simxGetObjectPosition(clientID,tar,tip,vrep.simx_opmode_buffer);
+            z = realPos(1:2)' + sqrtm(R)*randn(2,1);   %add sensor noise
             %call Kalman filter
-%             xhatminus(:,k) = A*xhat(:,k-1)+B*g;
-%             Pminus= A*P*A'+Q;
-%             K = Pminus*H'*inv( H*Pminus*H'+R );
-%             xhat(:,k) = xhatminus(:,k)+K*(z(k)-H*xhatminus(:,k));
-%             P = (I-K*H)*Pminus;
+            xhatminus = A*xhat+sqrtm(Q);
+            Pminus = A*P*A'+Q;
+            K = Pminus*H'*inv( H*Pminus*H'+R );
+            xhat = xhatminus+K*(z-H*xhatminus);
+            P = (I-K*H)*Pminus;
+            pos(1) = xhat(1);
+            pos(2) = xhat(2);
+%             pos(1) = z(1); %without Kalman
+%             pos(2) = z(2); %without Kalman
+
+%             plot(simTime,realPos(1),'ro');hold on
+%             plot(simTime,z(1),'b+');
+%             plot(simTime,pos(1),'g*');
             
-            
-%             [res,tarLineVel,tarAngVel] = vrep.simxGetObjectVelocity(clientID,tar,vrep.simx_opmode_buffer);
+%             [res,tarLineVel,tarAngVel] = vrep.simxGetObjectVelocity(clientID,tar,vrep.simx_opmode_buffer)
 %             [res,tipLineVel,tipAngVel] = vrep.simxGetObjectVelocity(clientID,tip,vrep.simx_opmode_buffer);
 
             dist = sqrt(pos(1)^2 + pos(2)^2);
@@ -148,7 +150,6 @@ function tryPram_1()
             for i = 1:proxNum
                 [res,proxState(i),proxCoord(i,:)] = vrep.simxReadProximitySensor(clientID,proxSensor(i),vrep.simx_opmode_buffer);   
             end
-            
             if proxState(7) ~= 0
                 proxState(7) = 0;
             else
@@ -430,7 +431,7 @@ function [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,tempLeftVel,temp
     end
 end
 
-%%limit-range recursive average filtering to get walk speed
+%limit-range recursive average filtering to get walk speed
 %First order low pass filtering
 function [walkVel,tempWalkVel,pastWalkVel] = getWalkVel(tempWalkVel,pastWalkVel,dist,pastDist,timeStep,pramVel)
     for i = 1:9
@@ -448,8 +449,5 @@ function [walkVel,tempWalkVel,pastWalkVel] = getWalkVel(tempWalkVel,pastWalkVel,
     end
     pastWalkVel = walkVel;
 end 
-        
-function followWall()
-
-end
+       
         
