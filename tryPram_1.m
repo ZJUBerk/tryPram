@@ -21,12 +21,12 @@ function tryPram_1()
         kP1 = 5;
         kI1 = 0.2;
         kD1 = 0;
-        kP2 = 7; %default = 7
+        kP2 = 10; %default = 7
         kI2 = 0;
         kD2 = 0.2;
         %Braitenberg weights
-        leftBraitWeight = 1.2*[0.45, -0.2, 0.4, -0.15, 0.3, -0.05, 0.3, -0.4];
-        rightBraitWeight = 1.2*[-0.2, 0.45, -0.15, 0.4, -0.05, 0.3, -0.4, 0.3];
+        leftBraitWeight = 1.2*[0.45, -0.2, 0.4, -0.15, 0.3, -0.05, 0.3, -0.5];
+        rightBraitWeight = 1.2*[-0.2, 0.45, -0.15, 0.4, -0.05, 0.3, -0.5, 0.3];
         
         count = 0;
         state = 0;
@@ -163,6 +163,7 @@ function tryPram_1()
 
             vrep.simxSetObjectPosition(clientID,tar,-1,[6*cos(0.2*simTime)+0.06*cos(4*pi*simTime);9*sin(0.1*simTime+1)+0.09*sin(4*pi*simTime+1);0.2],vrep.simx_opmode_oneshot);
 %             vrep.simxSetObjectPosition(clientID,tar,-1,[3;10-simTime+0.02*cos(4*pi*simTime);0.2],vrep.simx_opmode_oneshot);
+%             vrep.simxSetObjectPosition(clientID,tar,-1,[6.6*cos(0.2*simTime)+0.066*cos(4*pi*simTime);9.9*sin(0.1*simTime+1)+0.099*sin(4*pi*simTime+1);0.2],vrep.simx_opmode_oneshot);
 
             switch state
                 case 0
@@ -308,26 +309,25 @@ function tryPram_1()
                     end
                 case 4  %wallFollow
                     if wallFlag > 0
-                        leftVel = walkVel*unitVel + kP1*(dist - keepDist) + kI1*distIntegral + kD1*distDiff - 1*(proxCoord(3,3) - 0.4);
-                        rightVel = walkVel*unitVel + kP1*(dist - keepDist) + kI1*distIntegral + kD1*distDiff + 1*(proxCoord(3,3) - 0.4);
+                        leftVel = walkVel*unitVel + kP1*(dist - keepDist) + kI1*distIntegral + kD1*distDiff - 5*(proxCoord(3,3) - 0.4);
+                        rightVel = walkVel*unitVel + kP1*(dist - keepDist) + kI1*distIntegral + kD1*distDiff + 5*(proxCoord(3,3) - 0.4);
                         if sum(proxState == [0;0;1;0;0;0;0;0]) ~= 8 || theta < 0
                             state = 0;
                             wallFlag = 0;
                         end
                     elseif wallFlag < 0
-                        leftVel = walkVel*unitVel + kP1*(dist - keepDist) + kI1*distIntegral + kD1*distDiff + 1*(proxCoord(4,3) - 0.4);
-                        rightVel = walkVel*unitVel + kP1*(dist - keepDist) + kI1*distIntegral + kD1*distDiff - 1*(proxCoord(4,3) - 0.4);
+                        leftVel = walkVel*unitVel + kP1*(dist - keepDist) + kI1*distIntegral + kD1*distDiff + 5*(proxCoord(4,3) - 0.4);
+                        rightVel = walkVel*unitVel + kP1*(dist - keepDist) + kI1*distIntegral + kD1*distDiff - 5*(proxCoord(4,3) - 0.4);
                         if sum(proxState == [0;0;0;1;0;0;0;0]) ~= 8 || theta > 0
                             state = 0;
                             wallFlag = 0;
                         end
                     disp('wall follow');
-                    [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,leftVel,rightVel,maxVel,maxAcc);
                     end
+                    [leftVel,rightVel] = velLimit(pastLeftVel,pastRightVel,leftVel,rightVel,maxVel,maxAcc);
                     
                      
-         
-                    
+ 
             %                      break
             end
             vrep.simxSetJointTargetVelocity(clientID,leftMotor,leftVel,vrep.simx_opmode_oneshot);
